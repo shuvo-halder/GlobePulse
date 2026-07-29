@@ -1,0 +1,12 @@
+go 1.21
+
+toolchain go1.21.13
+
+use (
+	./packages/shared-auth
+	./packages/shared-types
+	./services/analytics-service
+	./services/auth-service
+	./services/country-service
+	./services/news-service
+)

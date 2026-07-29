@@ -11,14 +11,16 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+
   auth-service:
     build:
-      context: .
-      dockerfile: services/auth-service/Dockerfile
+      context: ./services/auth-service
+      dockerfile: Dockerfile
     ports:
       - "8081:8081"
     environment:
@@ -35,10 +37,11 @@ services:
     depends_on:
       - postgres
       - redis
+
   news-service:
     build:
-      context: .
-      dockerfile: services/news-service/Dockerfile
+      context: ./services/news-service
+      dockerfile: Dockerfile
     ports:
       - "8080:8080"
     environment:
@@ -54,10 +57,11 @@ services:
     depends_on:
       - postgres
       - redis
+
   country-service:
     build:
-      context: .
-      dockerfile: services/country-service/Dockerfile
+      context: ./services/country-service
+      dockerfile: Dockerfile
     ports:
       - "8082:8082"
     environment:
@@ -73,15 +77,17 @@ services:
     depends_on:
       - postgres
       - redis
+
   rabbitmq:
     image: rabbitmq:3-management-alpine
     ports:
       - "5672:5672"
       - "15672:15672"
+
   analytics-service:
     build:
-      context: .
-      dockerfile: services/analytics-service/Dockerfile
+      context: ./services/analytics-service
+      dockerfile: Dockerfile
     ports:
       - "8084:8084"
     environment:
@@ -99,10 +105,11 @@ services:
       - postgres
       - redis
       - rabbitmq
+
   ai-service:
     build:
-      context: .
-      dockerfile: services/ai-service/Dockerfile
+      context: ./services/ai-service
+      dockerfile: Dockerfile
     ports:
       - "8083:8083"
     environment:
@@ -121,10 +128,11 @@ services:
       - postgres
       - redis
       - rabbitmq
+
   ai-worker:
     build:
-      context: .
-      dockerfile: services/ai-service/Dockerfile
+      context: ./services/ai-service
+      dockerfile: Dockerfile
     command: celery -A app.core.celery_app worker --loglevel=info -Q ai_analysis_queue
     environment:
       APP_ENV: development
@@ -142,5 +150,20 @@ services:
       - redis
       - rabbitmq
       - ai-service
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    environment:
+      APP_ENV: development
+    depends_on:
+      - auth-service
+      - news-service
+      - country-service
+      - analytics-service
+
 volumes:
   pgdata:
