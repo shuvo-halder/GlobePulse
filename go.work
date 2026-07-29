@@ -1,0 +1,10 @@
+go 1.19
+
+use (
+	./packages/shared-types
+	./packages/shared-auth
+	./services/auth-service
+	./services/news-service
+	./services/country-service
+	./services/analytics-service
+)
