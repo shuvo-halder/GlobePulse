@@ -1,79 +1,20 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
-
-	"github.com/global-news/news-service/internal/config"
-	http_handler "github.com/global-news/news-service/internal/handler/http"
-	"github.com/global-news/news-service/internal/repository/postgres"
-	"github.com/global-news/news-service/internal/repository/redis"
-	"github.com/global-news/news-service/internal/service"
-	"github.com/global-news/news-service/pkg/logger"
-	"go.uber.org/zap"
 )
 
 func main() {
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		panic(fmt.Sprintf("Failed to load config: %v", err))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
 	}
-
-	logger.InitLogger(cfg.AppEnv)
-	defer logger.Log.Sync()
-
-	logger.Log.Info("Starting News Service...")
-
-	// Init DB
-	db, err := postgres.NewPostgresDB(cfg)
-	if err != nil {
-		logger.Log.Fatal("Failed to connect to PostgreSQL", zap.Error(err))
-	}
-	defer db.Close()
-
-	// Init Redis Cache
-	cacheRepo := redis.NewCacheRepository(cfg.RedisAddr, cfg.RedisPass)
-
-	// Init Repos
-	newsRepo := postgres.NewNewsRepository(db)
-
-	// Init Services
-	newsService := service.NewNewsService(newsRepo, cacheRepo, cfg.CacheTTLMinutes)
-
-	// Init Router
-	router := http_handler.NewRouter(cfg)
-	http_handler.NewNewsHandler(router, newsService)
-
-	srv := &http.Server{
-		Addr:    ":" + cfg.Port,
-		Handler: router,
-	}
-
-	// Graceful shutdown
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Log.Fatal("Failed to start server", zap.Error(err))
-		}
-	}()
-
-	logger.Log.Info("Server listening", zap.String("port", cfg.Port))
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	logger.Log.Info("Shutting down server...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		logger.Log.Fatal("Server forced to shutdown", zap.Error(err))
-	}
-
-	logger.Log.Info("Server exiting")
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"status": "ok"}`)
+	})
+	fmt.Printf("Starting news-service on port %s\n", port)
+	http.ListenAndServe(":"+port, nil)
 }
