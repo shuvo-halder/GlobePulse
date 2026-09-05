@@ -61,9 +61,9 @@ func (c *GDELTConnector) Fetch(ctx context.Context) ([]domain.ExternalRecord, er
 		
 		extID := a.Url
 
-		publishedAt, err := time.Parse("20060102T150405Z", a.Seendate)
-		if err != nil {
-			publishedAt = time.Now()
+		var publishedAt time.Time
+		if parsed, err := time.Parse("20060102T150405Z", a.Seendate); err == nil {
+			publishedAt = parsed
 		}
 
 		records = append(records, domain.ExternalRecord{

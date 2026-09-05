@@ -22,10 +22,16 @@ The backend follows a **Microservices Architecture**. Services are containerized
 - **Current State:** Exposes a basic `/health` endpoint. Celery worker is configured to connect to RabbitMQ and Redis, but no actual AI processing logic is currently implemented.
 
 ### 3. News Service (`services/news-service`)
-**Status:** Stubbed
+**Status:** Implemented (Ingestion Pipeline)
 - **Language:** Go 1.21
-- **Responsibility:** Intended to fetch, aggregate, or serve global news events.
-- **Current State:** Only exposes a `/health` endpoint. No database connections or domain logic.
+- **Responsibility:** Periodically fetches, normalizes, deduplicates, and stores global threat events from external APIs (USGS, GDELT, ReliefWeb).
+- **Architecture:** 
+  - **Connectors**: Source-specific fetchers and normalizers.
+  - **Resilient HTTP Client**: Exponential backoff, jitter, HTTP 429 Retry-After handling, context cancellation.
+  - **Scheduler**: Parallel execution with connector isolation, overlap protection, and thread-safe operational statistics.
+  - **Enrichment Pipeline**: Sequential, idempotent, extensible pipeline preserving domain boundaries between raw normalization and derived context. Currently handles data quality flags, geographic confidence markers, static country heuristics, and source provenance extraction without fabricating data or overriding authoritative signals.
+  - **Database**: PostgreSQL with `ON CONFLICT` deduplication ensuring idempotency.
+- **Current State:** Exposes a `/health` endpoint and an operational telemetry endpoint at `/health/ingestion`. Handles graceful shutdown.
 
 ### 4. Country Service (`services/country-service`)
 **Status:** Stubbed

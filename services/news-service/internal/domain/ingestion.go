@@ -61,7 +61,14 @@ type Connector interface {
 	Normalize(record ExternalRecord) (*ThreatEvent, error)
 }
 
+type SaveResult int
+
+const (
+	SaveInserted SaveResult = iota
+	SaveDuplicate
+)
+
 type IngestionRepository interface {
 	GetOrCreateSource(ctx context.Context, name, sourceType, baseURL string) (uuid.UUID, error)
-	SaveItemAndEvent(ctx context.Context, sourceID uuid.UUID, item *SourceItem, event *ThreatEvent) error
+	SaveItemAndEvent(ctx context.Context, sourceID uuid.UUID, item *SourceItem, event *ThreatEvent) (SaveResult, error)
 }

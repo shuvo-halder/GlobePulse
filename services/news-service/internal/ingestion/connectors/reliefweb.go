@@ -52,11 +52,15 @@ func (c *ReliefWebConnector) Fetch(ctx context.Context) ([]domain.ExternalRecord
 
 	var records []domain.ExternalRecord
 	for _, r := range payload.Data {
+		if r.ID == "" {
+			continue // skip invalid records
+		}
+
 		raw, _ := json.Marshal(r)
 		
-		pubTime, _ := time.Parse(time.RFC3339, r.Fields.Date.Created)
-		if pubTime.IsZero() {
-			pubTime = time.Now()
+		var pubTime time.Time
+		if parsed, err := time.Parse(time.RFC3339, r.Fields.Date.Created); err == nil {
+			pubTime = parsed
 		}
 
 		records = append(records, domain.ExternalRecord{
@@ -80,13 +84,15 @@ func (c *ReliefWebConnector) Normalize(record domain.ExternalRecord) (*domain.Th
 		ID:              uuid.New(),
 		Title:           r.Fields.Title,
 		Description:     "Humanitarian report/update via ReliefWeb.",
-		EventType:       "humanitarian_event",
-		Category:        "humanitarian",
-		Severity:        "medium",
-		Confidence:      90.0,
-		OccurredAt:      record.PublishedAt,
-		DetectedAt:      time.Now(),
-		LocationDetails: "See report for specific geography",
-		Status:          "active",
+		EventType:        "humanitarian_report",
+		Category:         "humanitarian",
+		Severity:         "unknown",
+		Confidence:       50.0,
+		OccurredAt:       time.Time{}, // Unknown actual event time
+		DetectedAt:       record.PublishedAt,
+		HasNoLocation:    true,
+		EventTimeUnknown: true,
+		LocationDetails:  "See report for specific geography",
+		Status:           "active",
 	}, nil
 }
