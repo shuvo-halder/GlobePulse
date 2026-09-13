@@ -90,9 +90,12 @@ func (c *ReliefWebConnector) Normalize(record domain.ExternalRecord) (*domain.Th
 		Confidence:       50.0,
 		OccurredAt:       time.Time{}, // Unknown actual event time
 		DetectedAt:       record.PublishedAt,
+		Latitude:         nil, // Unknown coordinates must be nil
+		Longitude:        nil, // Unknown coordinates must be nil
 		HasNoLocation:    true,
 		EventTimeUnknown: true,
-		LocationDetails:  "See report for specific geography",
+		Country:          "",
+		LocationDetails:  "",
 		Status:           "active",
 	}, nil
 }

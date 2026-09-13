@@ -33,11 +33,11 @@ type ThreatEvent struct {
 	Category        string
 	Severity        string
 	Confidence      float64
-	OccurredAt      time.Time
-	DetectedAt      time.Time
-	Latitude        float64
-	Longitude       float64
-	Country         string
+	OccurredAt       time.Time
+	DetectedAt       time.Time
+	Latitude         *float64
+	Longitude        *float64
+	Country          string
 	LocationDetails  string
 	Status           string
 	Metadata         []byte

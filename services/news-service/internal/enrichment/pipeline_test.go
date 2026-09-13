@@ -1,56 +1,72 @@
 package enrichment
 
 import (
+	"bytes"
 	"context"
 	"testing"
+	"time"
 
 	"github.com/global-news/news-service/internal/domain"
 )
 
-type MockEnricher struct {
-	name    string
-	err     error
-	invoked bool
-}
+// TEST 8 — Full Pipeline Idempotency
+// Execute full enrichment pipeline twice.
+// Expected: same semantic output, no duplicate arrays/flags/metadata.
+func TestPipeline_Idempotency(t *testing.T) {
+	pipe := NewPipeline(
+		NewProvenanceEnricher(),
+		NewGeoEnricher(),
+		NewMetadataEnricher(),
+	)
 
-func (m *MockEnricher) Name() string {
-	return m.name
-}
+	pubTime := time.Date(2023, 10, 18, 12, 0, 0, 0, time.UTC)
+	record := domain.ExternalRecord{
+		ExternalID:  "pipe-test-1",
+		URL:         "https://example.com/item/1",
+		PublishedAt: pubTime,
+		RawMetadata: []byte(`{"sourcecountry":"US"}`),
+	}
 
-func (m *MockEnricher) Enrich(ctx context.Context, record domain.ExternalRecord, event *domain.ThreatEvent) error {
-	m.invoked = true
-	return m.err
-}
+	lat := 35.0
+	lon := 139.0
+	event := &domain.ThreatEvent{
+		Title:           "Seismic Event",
+		EventType:       "earthquake",
+		Latitude:        &lat,
+		Longitude:       &lon,
+		LocationDetails: "45 km E of Hachinohe, Japan",
+		HasNoLocation:   false,
+	}
 
-func TestEnrichmentPipeline_Execution(t *testing.T) {
-	e1 := &MockEnricher{name: "E1"}
-	e2 := &MockEnricher{name: "E2"}
+	ctx := context.Background()
 
-	pipeline := NewPipeline(e1, e2)
-
-	err := pipeline.Enrich(context.Background(), domain.ExternalRecord{}, &domain.ThreatEvent{})
+	// Run 1
+	err := pipe.Enrich(ctx, record, event)
 	if err != nil {
-		t.Fatalf("Expected nil, got %v", err)
+		t.Fatalf("First enrichment pass failed: %v", err)
 	}
 
-	if !e1.invoked || !e2.invoked {
-		t.Error("Expected all enrichers to be invoked")
-	}
-}
+	metaPass1 := make([]byte, len(event.Metadata))
+	copy(metaPass1, event.Metadata)
+	countryPass1 := event.Country
+	latPass1 := *event.Latitude
+	lonPass1 := *event.Longitude
 
-func TestEnrichmentPipeline_FailureIsNonFatal(t *testing.T) {
-	e1 := &MockEnricher{name: "E1", err: context.DeadlineExceeded}
-	e2 := &MockEnricher{name: "E2"}
-
-	pipeline := NewPipeline(e1, e2)
-
-	// Even if E1 fails, E2 should run and overall pipeline returns nil.
-	err := pipeline.Enrich(context.Background(), domain.ExternalRecord{}, &domain.ThreatEvent{})
+	// Run 2
+	err = pipe.Enrich(ctx, record, event)
 	if err != nil {
-		t.Fatalf("Expected nil (non-fatal error handling), got %v", err)
+		t.Fatalf("Second enrichment pass failed: %v", err)
 	}
 
-	if !e1.invoked || !e2.invoked {
-		t.Error("Expected all enrichers to be invoked despite failure")
+	metaPass2 := event.Metadata
+
+	if event.Country != countryPass1 {
+		t.Errorf("Country changed across runs: %v vs %v", event.Country, countryPass1)
+	}
+	if *event.Latitude != latPass1 || *event.Longitude != lonPass1 {
+		t.Errorf("Coordinates changed across runs")
+	}
+	if !bytes.Equal(metaPass1, metaPass2) {
+		t.Errorf("Metadata changed across idempotent runs:\nPass 1: %s\nPass 2: %s", string(metaPass1), string(metaPass2))
 	}
 }

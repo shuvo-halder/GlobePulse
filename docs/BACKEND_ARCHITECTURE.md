@@ -29,7 +29,7 @@ The backend follows a **Microservices Architecture**. Services are containerized
   - **Connectors**: Source-specific fetchers and normalizers.
   - **Resilient HTTP Client**: Exponential backoff, jitter, HTTP 429 Retry-After handling, context cancellation.
   - **Scheduler**: Parallel execution with connector isolation, overlap protection, and thread-safe operational statistics.
-  - **Enrichment Pipeline**: Sequential, idempotent, extensible pipeline preserving domain boundaries between raw normalization and derived context. Currently handles data quality flags, geographic confidence markers, static country heuristics, and source provenance extraction without fabricating data or overriding authoritative signals.
+  - **Enrichment Pipeline**: Sequential, idempotent, extensible pipeline preserving strict domain boundaries between raw normalization and derived context. Enforces a strict data authority hierarchy (`authoritative source data > reliable structured enrichment > approximate enrichment > heuristic inference > unknown`), represents unknown coordinates strictly as `nil/NULL` (never using `0,0` as a missing sentinel), distinguishes `exact`, `approximate`, `country`, and `unknown` location confidences, separates reporting context from event location, and deterministically generates data quality and provenance metadata.
   - **Database**: PostgreSQL with `ON CONFLICT` deduplication ensuring idempotency.
 - **Current State:** Exposes a `/health` endpoint and an operational telemetry endpoint at `/health/ingestion`. Handles graceful shutdown.
 

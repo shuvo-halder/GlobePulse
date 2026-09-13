@@ -53,20 +53,31 @@ func (r *IngestionRepository) SaveItemAndEvent(ctx context.Context, sourceID uui
 	}
 
 	// 2. Insert Threat Event
-	var dbLat, dbLon interface{} = event.Latitude, event.Longitude
-	if event.HasNoLocation {
-		dbLat, dbLon = nil, nil
+	var dbLat, dbLon interface{} = nil, nil
+	if !event.HasNoLocation && event.Latitude != nil && event.Longitude != nil {
+		dbLat = *event.Latitude
+		dbLon = *event.Longitude
 	}
 	
 	var dbOccurredAt interface{} = event.OccurredAt
-	if event.EventTimeUnknown {
+	if event.EventTimeUnknown || event.OccurredAt.IsZero() {
 		dbOccurredAt = nil
 	}
 
+	var dbCountry interface{} = event.Country
+	if event.Country == "" {
+		dbCountry = nil
+	}
+
+	var dbMetadata interface{} = event.Metadata
+	if len(event.Metadata) == 0 {
+		dbMetadata = nil
+	}
+
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO threat_events (id, title, description, event_type, category, severity, confidence, occurred_at, detected_at, latitude, longitude, location_details, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-	`, event.ID, event.Title, event.Description, event.EventType, event.Category, event.Severity, event.Confidence, dbOccurredAt, event.DetectedAt, dbLat, dbLon, event.LocationDetails, event.Status)
+		INSERT INTO threat_events (id, title, description, event_type, category, severity, confidence, occurred_at, detected_at, latitude, longitude, country, location_details, status, metadata)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+	`, event.ID, event.Title, event.Description, event.EventType, event.Category, event.Severity, event.Confidence, dbOccurredAt, event.DetectedAt, dbLat, dbLon, dbCountry, event.LocationDetails, event.Status, dbMetadata)
 	if err != nil {
 		return 0, err
 	}

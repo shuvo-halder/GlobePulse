@@ -108,11 +108,14 @@ func TestUSGSConnector_FetchAndNormalize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error on normalize, got %v", err)
 	}
-	if event1.Longitude != -120.123 {
+	if event1.Longitude == nil || *event1.Longitude != -120.123 {
 		t.Errorf("expected lon -120.123, got %v", event1.Longitude)
 	}
-	if event1.Latitude != 35.456 {
+	if event1.Latitude == nil || *event1.Latitude != 35.456 {
 		t.Errorf("expected lat 35.456, got %v", event1.Latitude)
+	}
+	if event1.HasNoLocation {
+		t.Errorf("expected HasNoLocation to be false for USGS earthquake")
 	}
 	
 	expectedOccurredAt := time.UnixMilli(1697624100000)

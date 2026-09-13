@@ -3,6 +3,7 @@ package enrichment
 import (
 	"context"
 	"encoding/json"
+	"sort"
 
 	"github.com/global-news/news-service/internal/domain"
 )
@@ -29,10 +30,10 @@ func (e *MetadataEnricher) Enrich(ctx context.Context, record domain.ExternalRec
 
 	flags := []string{}
 
-	if event.HasNoLocation {
+	if event.HasNoLocation || event.Latitude == nil || event.Longitude == nil {
 		flags = append(flags, "missing_location")
 	}
-	if event.EventTimeUnknown {
+	if event.EventTimeUnknown || event.OccurredAt.IsZero() {
 		flags = append(flags, "missing_event_time")
 	}
 	if record.PublishedAt.IsZero() {
@@ -62,6 +63,7 @@ func (e *MetadataEnricher) Enrich(ctx context.Context, record domain.ExternalRec
 	for f := range existingFlagsSet {
 		finalFlags = append(finalFlags, f)
 	}
+	sort.Strings(finalFlags)
 
 	meta["data_quality_flags"] = finalFlags
 

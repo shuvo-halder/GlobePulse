@@ -70,8 +70,11 @@ func TestGDELTConnector_FetchAndNormalize(t *testing.T) {
 	if event.EventType != "news_signal" {
 		t.Errorf("expected event type news_signal, got %v", event.EventType)
 	}
-	if event.Country != "Test Country" {
-		t.Errorf("expected country 'Test Country', got %v", event.Country)
+	if event.Country != "" {
+		t.Errorf("expected event country to be empty (source country must not become event country), got %v", event.Country)
+	}
+	if event.Latitude != nil || event.Longitude != nil {
+		t.Errorf("expected coordinates to be nil for GDELT, got lat=%v, lon=%v", event.Latitude, event.Longitude)
 	}
 	if !event.HasNoLocation {
 		t.Errorf("expected HasNoLocation to be true")

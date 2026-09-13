@@ -30,12 +30,24 @@ func (e *ProvenanceEnricher) Enrich(ctx context.Context, record domain.ExternalR
 
 	// Only add provenance if it doesn't already exist to preserve idempotency
 	if _, exists := meta["provenance"]; !exists {
-		meta["provenance"] = map[string]interface{}{
-			"external_id":           record.ExternalID,
-			"source_url":            record.URL,
-			"normalized_at":         time.Now().UTC().Format(time.RFC3339),
-			"source_published_at":   record.PublishedAt.UTC().Format(time.RFC3339),
+		prov := map[string]interface{}{
+			"external_id":         record.ExternalID,
+			"source_url":          record.URL,
+			"normalized_at":       time.Now().UTC().Format(time.RFC3339),
+			"source_published_at": record.PublishedAt.UTC().Format(time.RFC3339),
 		}
+
+		// Extract source context if present in raw metadata (e.g. GDELT sourcecountry)
+		if len(record.RawMetadata) > 0 {
+			var rawMap map[string]interface{}
+			if err := json.Unmarshal(record.RawMetadata, &rawMap); err == nil {
+				if sc, ok := rawMap["sourcecountry"].(string); ok && sc != "" {
+					prov["source_country"] = sc
+				}
+			}
+		}
+
+		meta["provenance"] = prov
 		
 		b, err := json.Marshal(meta)
 		if err == nil {

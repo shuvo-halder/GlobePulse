@@ -93,12 +93,12 @@ func (c *GDELTConnector) Normalize(record domain.ExternalRecord) (*domain.Threat
 		Confidence:       50.0,
 		OccurredAt:       time.Time{}, // ignored due to EventTimeUnknown = true
 		DetectedAt:       record.PublishedAt,
-		Latitude:         0, // ignored due to HasNoLocation = true
-		Longitude:        0, // ignored due to HasNoLocation = true
+		Latitude:         nil, // Unknown location must be nil, never 0,0
+		Longitude:        nil, // Unknown location must be nil, never 0,0
 		HasNoLocation:    true,
 		EventTimeUnknown: true,
-		Country:          a.Sourcecountry,
-		LocationDetails:  a.Sourcecountry,
+		Country:          "", // GDELT sourcecountry represents source media context, NOT event location
+		LocationDetails:  "",
 		Status:           "active",
 	}, nil
 }

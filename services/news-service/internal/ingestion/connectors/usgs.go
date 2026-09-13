@@ -155,10 +155,12 @@ func (c *USGSConnector) Normalize(record domain.ExternalRecord) (*domain.ThreatE
 		Confidence:      100.0,
 		OccurredAt:      record.PublishedAt,
 		DetectedAt:      detectedAt,
-		Latitude:        lat,
-		Longitude:       lon,
+		Latitude:        &lat,
+		Longitude:       &lon,
 		LocationDetails: f.Properties.Place,
 		Status:          f.Properties.Status,
 		Metadata:        metaBytes,
+		HasNoLocation:   false,
+		EventTimeUnknown: false,
 	}, nil
 }
