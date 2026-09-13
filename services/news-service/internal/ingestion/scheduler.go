@@ -14,6 +14,7 @@ type Scheduler struct {
 	connectors []domain.Connector
 	repo       domain.IngestionRepository
 	enricher   domain.EnrichmentPipeline
+	extractor  domain.EntityPipeline
 	interval   time.Duration
 	stats      map[string]*ConnectorStats
 	statsMu    sync.RWMutex
@@ -27,6 +28,10 @@ func NewScheduler(repo domain.IngestionRepository, enricher domain.EnrichmentPip
 		interval: interval,
 		stats:    make(map[string]*ConnectorStats),
 	}
+}
+
+func (s *Scheduler) SetEntityPipeline(extractor domain.EntityPipeline) {
+	s.extractor = extractor
 }
 
 func (s *Scheduler) Register(c domain.Connector) {
@@ -137,6 +142,17 @@ func (s *Scheduler) launchConnector(ctx context.Context, c domain.Connector) {
 				}
 			}
 
+			var entities []domain.IntelligenceEntity
+			if s.extractor != nil {
+				var err error
+				entities, err = s.extractor.Extract(ctx, event)
+				if err != nil {
+					slog.Warn("Entity extraction failure", "external_id", rec.ExternalID, "error", err)
+					// Non-fatal: continue with empty entities to avoid partial or corrupted state
+					entities = nil
+				}
+			}
+
 			item := &domain.SourceItem{
 				ID:          uuid.New(),
 				ExternalID:  rec.ExternalID,
@@ -146,7 +162,7 @@ func (s *Scheduler) launchConnector(ctx context.Context, c domain.Connector) {
 				PublishedAt: rec.PublishedAt,
 			}
 
-			saveResult, err := s.repo.SaveItemAndEvent(ctx, sourceID, item, event)
+			saveResult, err := s.repo.SaveItemAndEvent(ctx, sourceID, item, event, entities)
 			if err != nil {
 				slog.Error("Failed to save item/event", "error", err)
 				rejected++

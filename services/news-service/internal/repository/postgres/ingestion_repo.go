@@ -28,7 +28,7 @@ func (r *IngestionRepository) GetOrCreateSource(ctx context.Context, name, sourc
 	return id, err
 }
 
-func (r *IngestionRepository) SaveItemAndEvent(ctx context.Context, sourceID uuid.UUID, item *domain.SourceItem, event *domain.ThreatEvent) (domain.SaveResult, error) {
+func (r *IngestionRepository) SaveItemAndEvent(ctx context.Context, sourceID uuid.UUID, item *domain.SourceItem, event *domain.ThreatEvent, entities []domain.IntelligenceEntity) (domain.SaveResult, error) {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -82,13 +82,42 @@ func (r *IngestionRepository) SaveItemAndEvent(ctx context.Context, sourceID uui
 		return 0, err
 	}
 
-	// 3. Link them
+	// 3. Link Event and Source Item
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO threat_event_source_items (threat_event_id, source_item_id)
 		VALUES ($1, $2)
 	`, event.ID, storedItemID)
 	if err != nil {
 		return 0, err
+	}
+
+	// 4. Save Intelligence Entities and Link to Threat Event
+	for _, entity := range entities {
+		var entityID uuid.UUID
+		err = tx.QueryRowContext(ctx, `
+			INSERT INTO intelligence_entities (id, entity_type, value, normalized_value)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (entity_type, normalized_value) DO UPDATE 
+			SET updated_at = CURRENT_TIMESTAMP
+			RETURNING id
+		`, entity.ID, string(entity.Type), entity.Value, entity.NormalizedValue).Scan(&entityID)
+		if err != nil {
+			return 0, err
+		}
+
+		var entityMeta interface{} = entity.Metadata
+		if len(entity.Metadata) == 0 {
+			entityMeta = nil
+		}
+
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO threat_event_entities (threat_event_id, entity_id, confidence, extraction_method, source_field, metadata)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			ON CONFLICT (threat_event_id, entity_id) DO NOTHING
+		`, event.ID, entityID, string(entity.Confidence), string(entity.ExtractionMethod), entity.SourceField, entityMeta)
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	return domain.SaveInserted, tx.Commit()

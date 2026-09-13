@@ -70,5 +70,5 @@ const (
 
 type IngestionRepository interface {
 	GetOrCreateSource(ctx context.Context, name, sourceType, baseURL string) (uuid.UUID, error)
-	SaveItemAndEvent(ctx context.Context, sourceID uuid.UUID, item *SourceItem, event *ThreatEvent) (SaveResult, error)
+	SaveItemAndEvent(ctx context.Context, sourceID uuid.UUID, item *SourceItem, event *ThreatEvent, entities []IntelligenceEntity) (SaveResult, error)
 }

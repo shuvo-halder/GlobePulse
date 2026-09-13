@@ -19,7 +19,7 @@ func (m *MockRepo) GetOrCreateSource(ctx context.Context, name, sourceType, base
 	return uuid.New(), nil
 }
 
-func (m *MockRepo) SaveItemAndEvent(ctx context.Context, sourceID uuid.UUID, item *domain.SourceItem, event *domain.ThreatEvent) (domain.SaveResult, error) {
+func (m *MockRepo) SaveItemAndEvent(ctx context.Context, sourceID uuid.UUID, item *domain.SourceItem, event *domain.ThreatEvent, entities []domain.IntelligenceEntity) (domain.SaveResult, error) {
 	return m.saveResult, m.saveErr
 }
 

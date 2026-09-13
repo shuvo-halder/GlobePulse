@@ -13,6 +13,7 @@ import (
 
 	"github.com/global-news/news-service/internal/ingestion"
 	"github.com/global-news/news-service/internal/enrichment"
+	"github.com/global-news/news-service/internal/extraction"
 	"github.com/global-news/news-service/internal/ingestion/connectors"
 	"github.com/global-news/news-service/internal/repository/postgres"
 	"github.com/jmoiron/sqlx"
@@ -72,7 +73,12 @@ func main() {
 		enrichment.NewMetadataEnricher(),
 	)
 
+	entityPipeline := extraction.NewPipeline(
+		extraction.NewDeterministicExtractor(),
+	)
+
 	scheduler := ingestion.NewScheduler(repo, pipeline, interval)
+	scheduler.SetEntityPipeline(entityPipeline)
 	scheduler.Register(connectors.NewGDELTConnector())
 	scheduler.Register(connectors.NewUSGSConnector())
 	scheduler.Register(connectors.NewReliefWebConnector())
