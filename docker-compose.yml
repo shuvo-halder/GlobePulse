@@ -10,13 +10,13 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-devuser}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
-      POSTGRES_DB: ${POSTGRES_DB:-globepulse}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-devuser} -d ${POSTGRES_DB:-globepulse}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -34,7 +34,6 @@ services:
   auth-service:
     build:
       context: ./services/auth-service
-      dockerfile: Dockerfile
     image: globepulse-auth-service:latest
     restart: unless-stopped
     logging: *default-logging
@@ -45,12 +44,12 @@ services:
       PORT: 8081
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: ${POSTGRES_USER:-devuser}
-      DB_PASS: ${POSTGRES_PASSWORD:-devpassword}
-      DB_NAME: ${POSTGRES_DB:-globepulse}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
       REDIS_ADDR: redis:6379
       REDIS_PASS: ""
-      JWT_SECRET: ${JWT_SECRET:-supersecret}
+      JWT_SECRET: ${JWT_SECRET}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/health || exit 1"]
       interval: 10s
@@ -65,7 +64,6 @@ services:
   news-service:
     build:
       context: ./services/news-service
-      dockerfile: Dockerfile
     image: globepulse-news-service:latest
     restart: unless-stopped
     logging: *default-logging
@@ -76,9 +74,9 @@ services:
       PORT: 8080
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: ${POSTGRES_USER:-devuser}
-      DB_PASS: ${POSTGRES_PASSWORD:-devpassword}
-      DB_NAME: ${POSTGRES_DB:-globepulse}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
       REDIS_ADDR: redis:6379
       REDIS_PASS: ""
     healthcheck:
@@ -95,7 +93,6 @@ services:
   country-service:
     build:
       context: ./services/country-service
-      dockerfile: Dockerfile
     image: globepulse-country-service:latest
     restart: unless-stopped
     logging: *default-logging
@@ -106,9 +103,9 @@ services:
       PORT: 8082
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: ${POSTGRES_USER:-devuser}
-      DB_PASS: ${POSTGRES_PASSWORD:-devpassword}
-      DB_NAME: ${POSTGRES_DB:-globepulse}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
       REDIS_ADDR: redis:6379
       REDIS_PASS: ""
     healthcheck:
@@ -127,8 +124,8 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
@@ -138,7 +135,6 @@ services:
   analytics-service:
     build:
       context: ./services/analytics-service
-      dockerfile: Dockerfile
     image: globepulse-analytics-service:latest
     restart: unless-stopped
     logging: *default-logging
@@ -149,12 +145,12 @@ services:
       PORT: 8084
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: ${POSTGRES_USER:-devuser}
-      DB_PASS: ${POSTGRES_PASSWORD:-devpassword}
-      DB_NAME: ${POSTGRES_DB:-globepulse}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
       REDIS_ADDR: redis:6379
       REDIS_PASS: ""
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      RABBITMQ_URL: ${RABBITMQ_URL}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8084/health || exit 1"]
       interval: 10s
@@ -171,7 +167,6 @@ services:
   ai-service:
     build:
       context: ./services/ai-service
-      dockerfile: Dockerfile
     image: globepulse-ai-service:latest
     restart: unless-stopped
     logging: *default-logging
@@ -182,14 +177,14 @@ services:
       PORT: 8083
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: ${POSTGRES_USER:-devuser}
-      DB_PASS: ${POSTGRES_PASSWORD:-devpassword}
-      DB_NAME: ${POSTGRES_DB:-globepulse}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
       REDIS_ADDR: redis
       REDIS_PORT: 6379
       REDIS_PASS: ""
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      REDIS_URL: ${REDIS_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8083/health\")'"]
       interval: 10s
@@ -212,14 +207,14 @@ services:
       APP_ENV: ${APP_ENV:-production}
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: ${POSTGRES_USER:-devuser}
-      DB_PASS: ${POSTGRES_PASSWORD:-devpassword}
-      DB_NAME: ${POSTGRES_DB:-globepulse}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASS: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
       REDIS_ADDR: redis
       REDIS_PORT: 6379
       REDIS_PASS: ""
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      REDIS_URL: ${REDIS_URL}
+      RABBITMQ_URL: ${RABBITMQ_URL}
     depends_on:
       postgres:
         condition: service_healthy
@@ -233,7 +228,6 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile
     image: globepulse-frontend:latest
     restart: unless-stopped
     logging: *default-logging
