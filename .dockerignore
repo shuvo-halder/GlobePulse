@@ -1,3 +1,13 @@
+.git
+.gitignore
+.env*
 node_modules
 dist
-.env
+build
+coverage
+*.log
+.DS_Store
+tmp
+services/
+docs/
+
