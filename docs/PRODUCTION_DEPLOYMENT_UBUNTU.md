@@ -498,6 +498,7 @@ services:
       REDIS_ADDR: redis
       REDIS_PORT: 6379
       REDIS_PASS: ""
+      REDIS_URL: redis://redis:6379/0
       RABBITMQ_URL: amqp://gp_rabbit:${RABBIT_PASS}@rabbitmq:5672/
     ports:
       - "127.0.0.1:8083:8083"
@@ -514,6 +515,7 @@ services:
       REDIS_ADDR: redis
       REDIS_PORT: 6379
       REDIS_PASS: ""
+      REDIS_URL: redis://redis:6379/0
       RABBITMQ_URL: amqp://gp_rabbit:${RABBIT_PASS}@rabbitmq:5672/
     restart: unless-stopped
 
@@ -663,16 +665,22 @@ docker compose exec rabbitmq rabbitmq-diagnostics ping
 ## 11. Docker Compose Production Deployment
 
 ### 11.1 Build and Pre-flight Inspection
-Ensure that Docker build contexts compile cleanly:
+Ensure that Docker build contexts compile cleanly. Note that `ai-worker` reuses the `globepulse-ai-service:latest` image built by `ai-service`, eliminating redundant builds and preventing parallel build collisions:
 
 ```bash
 cd /opt/globepulse/app
 
-# Pull base images
+# Pull external base images
 docker compose pull postgres redis rabbitmq
 
 # Build microservices and frontend
+# (Use --parallel for fast multi-core builds, or omit --parallel on memory-constrained 1GB-2GB VPS hosts)
 docker compose build --parallel
+```
+
+Verify that all built application images exist locally:
+```bash
+docker images | grep -E "(globepulse|app-)"
 ```
 
 ### 11.2 Launch Core Infrastructure First
@@ -697,8 +705,8 @@ docker compose ps
 Expected output:
 ```text
 NAME                     IMAGE                               COMMAND                  SERVICE             STATUS              PORTS
-app-ai-service-1         app-ai-service                      "uvicorn app.main:ap…"   ai-service          Up (healthy)        127.0.0.1:8083->8083/tcp
-app-ai-worker-1          app-ai-worker                       "celery -A app.core.…"   ai-worker           Up                  
+app-ai-service-1         globepulse-ai-service:latest        "uvicorn app.main:ap…"   ai-service          Up (healthy)        127.0.0.1:8083->8083/tcp
+app-ai-worker-1          globepulse-ai-service:latest        "celery -A app.core.…"   ai-worker           Up                  
 app-analytics-service-1  app-analytics-service               "./main"                 analytics-service   Up                  127.0.0.1:8084->8084/tcp
 app-auth-service-1       app-auth-service                    "./main"                 auth-service        Up                  127.0.0.1:8081->8081/tcp
 app-country-service-1    app-country-service                 "./main"                 country-service     Up                  127.0.0.1:8082->8082/tcp
