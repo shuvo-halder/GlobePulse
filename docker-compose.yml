@@ -4,23 +4,19 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: devuser
-      POSTGRES_PASSWORD: devpassword
-      POSTGRES_DB: globepulse
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-devuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpassword}
+      POSTGRES_DB: ${POSTGRES_DB:-globepulse}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U devuser -d globepulse"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-devuser} -d ${POSTGRES_DB:-globepulse}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -32,18 +28,18 @@ services:
       context: ./services/auth-service
       dockerfile: Dockerfile
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     environment:
-      APP_ENV: development
+      APP_ENV: ${APP_ENV:-development}
       PORT: 8081
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: devuser
-      DB_PASS: devpassword
-      DB_NAME: globepulse
+      DB_USER: ${POSTGRES_USER:-devuser}
+      DB_PASS: ${POSTGRES_PASSWORD:-devpassword}
+      DB_NAME: ${POSTGRES_DB:-globepulse}
       REDIS_ADDR: redis:6379
       REDIS_PASS: ""
-      JWT_SECRET: supersecret
+      JWT_SECRET: ${JWT_SECRET:-supersecret}
     depends_on:
       - postgres
       - redis
@@ -53,15 +49,15 @@ services:
       context: ./services/news-service
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
-      APP_ENV: development
+      APP_ENV: ${APP_ENV:-development}
       PORT: 8080
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: devuser
-      DB_PASS: devpassword
-      DB_NAME: globepulse
+      DB_USER: ${POSTGRES_USER:-devuser}
+      DB_PASS: ${POSTGRES_PASSWORD:-devpassword}
+      DB_NAME: ${POSTGRES_DB:-globepulse}
       REDIS_ADDR: redis:6379
       REDIS_PASS: ""
     depends_on:
@@ -73,15 +69,15 @@ services:
       context: ./services/country-service
       dockerfile: Dockerfile
     ports:
-      - "8082:8082"
+      - "127.0.0.1:8082:8082"
     environment:
-      APP_ENV: development
+      APP_ENV: ${APP_ENV:-development}
       PORT: 8082
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: devuser
-      DB_PASS: devpassword
-      DB_NAME: globepulse
+      DB_USER: ${POSTGRES_USER:-devuser}
+      DB_PASS: ${POSTGRES_PASSWORD:-devpassword}
+      DB_NAME: ${POSTGRES_DB:-globepulse}
       REDIS_ADDR: redis:6379
       REDIS_PASS: ""
     depends_on:
@@ -91,8 +87,10 @@ services:
   rabbitmq:
     image: rabbitmq:3-management-alpine
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-guest}
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
@@ -104,18 +102,18 @@ services:
       context: ./services/analytics-service
       dockerfile: Dockerfile
     ports:
-      - "8084:8084"
+      - "127.0.0.1:8084:8084"
     environment:
-      APP_ENV: development
+      APP_ENV: ${APP_ENV:-development}
       PORT: 8084
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: devuser
-      DB_PASS: devpassword
-      DB_NAME: globepulse
+      DB_USER: ${POSTGRES_USER:-devuser}
+      DB_PASS: ${POSTGRES_PASSWORD:-devpassword}
+      DB_NAME: ${POSTGRES_DB:-globepulse}
       REDIS_ADDR: redis:6379
       REDIS_PASS: ""
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
     depends_on:
       - postgres
       - redis
@@ -126,19 +124,19 @@ services:
       context: ./services/ai-service
       dockerfile: Dockerfile
     ports:
-      - "8083:8083"
+      - "127.0.0.1:8083:8083"
     environment:
-      APP_ENV: development
+      APP_ENV: ${APP_ENV:-development}
       PORT: 8083
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: devuser
-      DB_PASS: devpassword
-      DB_NAME: globepulse
+      DB_USER: ${POSTGRES_USER:-devuser}
+      DB_PASS: ${POSTGRES_PASSWORD:-devpassword}
+      DB_NAME: ${POSTGRES_DB:-globepulse}
       REDIS_ADDR: redis
       REDIS_PORT: 6379
       REDIS_PASS: ""
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8083/health\")'"]
       interval: 10s
@@ -155,16 +153,16 @@ services:
       dockerfile: Dockerfile
     command: celery -A app.core.celery_app worker --loglevel=info -Q ai_analysis_queue
     environment:
-      APP_ENV: development
+      APP_ENV: ${APP_ENV:-development}
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: devuser
-      DB_PASS: devpassword
-      DB_NAME: globepulse
+      DB_USER: ${POSTGRES_USER:-devuser}
+      DB_PASS: ${POSTGRES_PASSWORD:-devpassword}
+      DB_NAME: ${POSTGRES_DB:-globepulse}
       REDIS_ADDR: redis
       REDIS_PORT: 6379
       REDIS_PASS: ""
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
     depends_on:
       - postgres
       - redis
@@ -176,9 +174,9 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:80"
+      - "127.0.0.1:3100:80"
     environment:
-      APP_ENV: development
+      APP_ENV: ${APP_ENV:-development}
     depends_on:
       - auth-service
       - news-service
@@ -187,3 +185,7 @@ services:
 
 volumes:
   pgdata:
+
+networks:
+  default:
+    name: globepulse-net

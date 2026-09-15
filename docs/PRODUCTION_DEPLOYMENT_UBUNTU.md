@@ -59,7 +59,7 @@ GlobePulse AI is a real-time global threat intelligence platform. The system ing
             └─────────────┬─────────────┘
                           │
        ┌──────────────────┴──────────────────┐
-       │ (127.0.0.1:3000)                    │ (127.0.0.1:8080 - 8084)
+       │ (127.0.0.1:3100)                    │ (127.0.0.1:8080 - 8084)
        ▼                                     ▼
 ┌──────────────┐                     ┌───────────────────────────────┐
 │   frontend   │                     │      Backend Microservices    │
@@ -92,16 +92,30 @@ GlobePulse AI is a real-time global threat intelligence platform. The system ing
 | Component | Technology | Role in Production | Internal Port | Host Exposure Policy |
 | :--- | :--- | :--- | :--- | :--- |
 | **Edge Proxy** | Nginx (Ubuntu Host) | SSL termination, reverse proxy, CORS, static cache | 80, 443 | **Public (0.0.0.0)** |
-| **frontend** | React 19 + Nginx Alpine | Web UI & 3D Globe visualization | 80 | `127.0.0.1:3000` (Private) |
-| **auth-service** | Go 1.21 (Gin) | User registration, login, JWT issuance, Redis sessions | 8081 | `127.0.0.1:8081` (Private) |
-| **news-service** | Go 1.21 (HTTP) | Scheduled ingestion, deduplication, enrichment, entity extraction | 8080 | `127.0.0.1:8080` (Private) |
-| **country-service** | Go 1.21 (HTTP) | Country risk metrics & geospatial metadata | 8082 | `127.0.0.1:8082` (Private) |
-| **analytics-service**| Go 1.21 (HTTP) | Aggregated threat telemetry & analytics | 8084 | `127.0.0.1:8084` (Private) |
-| **ai-service** | Python 3.11 (FastAPI) | AI threat scoring & analysis dispatch | 8083 | `127.0.0.1:8083` (Private) |
+| **frontend** | React 19 + Nginx Alpine | Web UI & 3D Globe visualization | 80 | `127.0.0.1:3100` (Private loopback only; port 3000 reserved for existing host workloads) |
+| **auth-service** | Go 1.21 (Gin) | User registration, login, JWT issuance, Redis sessions | 8081 | `127.0.0.1:8081` (Private loopback) |
+| **news-service** | Go 1.21 (HTTP) | Scheduled ingestion, deduplication, enrichment, entity extraction | 8080 | `127.0.0.1:8080` (Private loopback) |
+| **country-service** | Go 1.21 (HTTP) | Country risk metrics & geospatial metadata | 8082 | `127.0.0.1:8082` (Private loopback) |
+| **analytics-service**| Go 1.21 (HTTP) | Aggregated threat telemetry & analytics | 8084 | `127.0.0.1:8084` (Private loopback) |
+| **ai-service** | Python 3.11 (FastAPI) | AI threat scoring & analysis dispatch | 8083 | `127.0.0.1:8083` (Private loopback) |
 | **ai-worker** | Python 3.11 (Celery) | Asynchronous task worker for `ai_analysis_queue` | None | None (Internal Worker) |
-| **postgres** | PostgreSQL 15 Alpine | Primary relational datastore (Threats, Sources, Users, Entities) | 5432 | `127.0.0.1:5432` (Private) |
-| **redis** | Redis 7 Alpine | Auth session cache & Celery task result backend | 6379 | `127.0.0.1:6379` (Private) |
-| **rabbitmq** | RabbitMQ 3 Management | AMQP Message broker for Celery & async queues | 5672, 15672 | `127.0.0.1` (Private only) |
+| **postgres** | PostgreSQL 15 Alpine | Primary relational datastore (Threats, Sources, Users, Entities) | 5432 | **None** (Internal Docker network only; no host port published) |
+| **redis** | Redis 7 Alpine | Auth session cache & Celery task result backend | 6379 | **None** (Internal Docker network only; no host port published) |
+| **rabbitmq** | RabbitMQ 3 Management | AMQP Message broker for Celery & async queues | 5672, 15672 | AMQP: **None** (Internal only); Web UI: `127.0.0.1:15672` (SSH Tunnel only) |
+
+### 1.1 Multi-Tenant VPS Coexistence & Isolation Architecture
+
+The target Ubuntu 24.04 LTS host already hosts running production containers that **must remain completely untouched and unperturbed**:
+* `n8n`: Workflow automation engine
+* `n8n-postgres`: PostgreSQL database dedicated to n8n (listens internally on 5432 without host publication)
+* `go-whatsapp-web-multidevice-whatsapp_go-1`: WhatsApp integration service listening on host port `0.0.0.0:3000`
+
+To ensure 100% collision-free coexistence and zero security bleed:
+1. **Host Port Conflict Prevention:** The GlobePulse frontend is bound to host loopback port `127.0.0.1:3100:80` instead of `3000`, leaving host port 3000 completely free for `whatsapp_go`.
+2. **Database Isolation:** GlobePulse runs its own dedicated `postgres:15-alpine` container with its own named Docker volume `pgdata`. It does **not** publish port 5432 to the host, preventing conflicts with `n8n-postgres` or any future PostgreSQL workloads.
+3. **Redis & RabbitMQ AMQP Isolation:** GlobePulse `redis` (port 6379) and `rabbitmq` (port 5672) publish zero host ports. They are reachable solely across the private Docker network by GlobePulse containers.
+4. **Dedicated Compose Network (`globepulse-net`):** All GlobePulse containers attach to an isolated bridge network named `globepulse-net`, completely decoupling DNS resolution and network namespaces from `n8n` or default Docker bridges.
+5. **Scoped Operational Boundary:** All Docker operations must be executed strictly within `/opt/globepulse/app/` using project-scoped commands (`docker compose`). Global destructive commands (e.g. `docker compose down` in other directories, `docker system prune -a --volumes`) are strictly prohibited.
 
 ---
 
@@ -375,7 +389,12 @@ JWT_SECRET_KEY=$(openssl rand -hex 32)
 ```
 
 ### 7.3 Production Docker Compose Override File
-The standard `docker-compose.yml` binds database and cache ports to `0.0.0.0`, which exposes internal infrastructure directly to the internet. To prevent this without modifying tracked git files, use a `docker-compose.override.yml` file. Docker Compose automatically merges this file when executing commands.
+The standard `docker-compose.yml` provides baseline development defaults and loopback bindings. In production, we deploy with a `docker-compose.override.yml` file to apply production environment variables, restart policies, and persistent broker storage without exposing internal datastores to the host.
+
+Notice that:
+* `postgres`, `redis`, and RabbitMQ AMQP publish **no host ports**; they communicate strictly over the internal `globepulse-net` network, ensuring complete isolation from existing workloads such as `n8n-postgres`.
+* `frontend` binds strictly to loopback `127.0.0.1:3100:80`, preserving host port 3000 for the existing `go-whatsapp-web-multidevice-whatsapp_go-1` container.
+* All microservice API ports bind strictly to `127.0.0.1` for exclusive reverse proxying by the host Nginx.
 
 Create `/opt/globepulse/app/docker-compose.override.yml`:
 
@@ -388,13 +407,9 @@ services:
       POSTGRES_USER: gp_admin
       POSTGRES_PASSWORD: ${DB_PASS}
       POSTGRES_DB: globepulse
-    ports:
-      - "127.0.0.1:5432:5432"
     restart: unless-stopped
 
   redis:
-    ports:
-      - "127.0.0.1:6379:6379"
     restart: unless-stopped
 
   rabbitmq:
@@ -402,7 +417,6 @@ services:
       RABBITMQ_DEFAULT_USER: gp_rabbit
       RABBITMQ_DEFAULT_PASS: ${RABBIT_PASS}
     ports:
-      - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
@@ -507,7 +521,7 @@ services:
     environment:
       APP_ENV: production
     ports:
-      - "127.0.0.1:3000:80"
+      - "127.0.0.1:3100:80"
     restart: unless-stopped
 
 volumes:
@@ -607,7 +621,7 @@ Redis 7 is utilized for two distinct workloads:
 2. **Celery Result Backend (`ai-service`):** Stores asynchronous task statuses and execution results for intelligence analysis jobs.
 
 ### 9.2 Network Isolation & Health Verification
-Redis is bound only to `127.0.0.1:6379` and communicates across the private Docker bridge network. It is **never** exposed to the public internet.
+Redis publishes zero host ports and communicates strictly across the private `globepulse-net` Docker bridge network. It is completely isolated from the host and **never** exposed to the public internet.
 
 Verify Redis operational health:
 ```bash
@@ -626,8 +640,10 @@ RabbitMQ 3 handles asynchronous messaging between:
 - Event producers (e.g., `analytics-service`, API requests)
 - Event consumers (e.g., `ai-worker` processing `ai_analysis_queue`)
 
+AMQP broker traffic (`5672`) publishes zero host ports and operates entirely within `globepulse-net`.
+
 ### 10.2 Management Dashboard Secure Access
-RabbitMQ includes a web management console on port `15672`. In production, this port is bound to `127.0.0.1:15672` and blocked by UFW.
+RabbitMQ includes a web management console on port `15672`. In production, this port is bound strictly to `127.0.0.1:15672` (loopback only) and blocked by UFW from external traffic.
 
 To inspect queues securely without exposing the dashboard to the public internet, create an SSH local port-forwarding tunnel from your workstation:
 ```bash
@@ -686,11 +702,11 @@ app-ai-worker-1          app-ai-worker                       "celery -A app.core
 app-analytics-service-1  app-analytics-service               "./main"                 analytics-service   Up                  127.0.0.1:8084->8084/tcp
 app-auth-service-1       app-auth-service                    "./main"                 auth-service        Up                  127.0.0.1:8081->8081/tcp
 app-country-service-1    app-country-service                 "./main"                 country-service     Up                  127.0.0.1:8082->8082/tcp
-app-frontend-1           app-frontend                        "/docker-entrypoint.…"   frontend            Up                  127.0.0.1:3000->80/tcp
+app-frontend-1           app-frontend                        "/docker-entrypoint.…"   frontend            Up                  127.0.0.1:3100->80/tcp
 app-news-service-1       app-news-service                    "./main"                 news-service        Up                  127.0.0.1:8080->8080/tcp
-app-postgres-1           postgres:15-alpine                  "docker-entrypoint.s…"   postgres            Up                  127.0.0.1:5432->5432/tcp
-app-rabbitmq-1           rabbitmq:3-management-alpine        "docker-entrypoint.s…"   rabbitmq            Up                  127.0.0.1:5672->5672/tcp, 127.0.0.1:15672->15672/tcp
-app-redis-1              redis:7-alpine                      "docker-entrypoint.s…"   redis               Up                  127.0.0.1:6379->6379/tcp
+app-postgres-1           postgres:15-alpine                  "docker-entrypoint.s…"   postgres            Up (healthy)        5432/tcp
+app-rabbitmq-1           rabbitmq:3-management-alpine        "docker-entrypoint.s…"   rabbitmq            Up (healthy)        5672/tcp, 127.0.0.1:15672->15672/tcp
+app-redis-1              redis:7-alpine                      "docker-entrypoint.s…"   redis               Up (healthy)        6379/tcp
 ```
 
 ---
@@ -714,7 +730,7 @@ Layer 3: Background Workers                              │
          └── ai-worker (Celery consumer) ◄───────────────┘
                    │
 Layer 4: Edge Presentation
-         └── frontend (React / Nginx 3000)
+         └── frontend (React / Nginx 3100)
 ```
 
 ### 12.2 Container Health Audit
@@ -746,7 +762,7 @@ curl -s http://127.0.0.1:8083/health
 # Output: {"status":"ok"}
 
 # 7. Frontend Container HTTP Response
-curl -sI http://127.0.0.1:3000 | grep "HTTP/1.1"
+curl -sI http://127.0.0.1:3100 | grep "HTTP/1.1"
 # Output: HTTP/1.1 200 OK
 ```
 
@@ -809,7 +825,7 @@ server {
 
     # Proxy to Docker Frontend Container (Vite / Nginx)
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3100;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -1159,12 +1175,13 @@ check_service() {
 }
 
 # Microservices Health
+check_service "Auth Service" "http://127.0.0.1:8081/health" "200"
 check_service "News Service Health" "http://127.0.0.1:8080/health" "200"
 check_service "Ingestion Telemetry" "http://127.0.0.1:8080/health/ingestion" "200"
 check_service "Country Service" "http://127.0.0.1:8082/health" "200"
 check_service "AI Service" "http://127.0.0.1:8083/health" "200"
 check_service "Analytics Service" "http://127.0.0.1:8084/health" "200"
-check_service "Frontend Container" "http://127.0.0.1:3000" "200"
+check_service "Frontend Container" "http://127.0.0.1:3100" "200"
 
 # Data Stores Health
 if docker compose -f /opt/globepulse/app/docker-compose.yml exec -T postgres pg_isready -U gp_admin -d globepulse > /dev/null 2>&1; then
@@ -1334,10 +1351,10 @@ docker compose up -d
 | **22** | TCP | OpenSSH | **Yes** | `0.0.0.0:22` | Administrative server management |
 | **80** | TCP | Nginx HTTP | **Yes** | `0.0.0.0:80` | ACME challenges & HTTPS redirects |
 | **443**| TCP | Nginx HTTPS| **Yes** | `0.0.0.0:443`| Secure user traffic |
-| **3000**| TCP | Frontend | **No** | `127.0.0.1:3000` | Proxied exclusively through Nginx |
-| **5432**| TCP | PostgreSQL | **No** | `127.0.0.1:5432` | Internal database traffic only |
-| **5672**| TCP | RabbitMQ AMQP | **No** | `127.0.0.1:5672` | Internal Celery broker traffic |
-| **6379**| TCP | Redis | **No** | `127.0.0.1:6379` | Internal session/caching traffic |
+| **3100**| TCP | Frontend | **No** | `127.0.0.1:3100` | Proxied exclusively through Nginx (host port 3000 preserved for existing WhatsApp container) |
+| **5432**| TCP | PostgreSQL | **No** | **None** (Docker network only) | Internal datastore traffic across `globepulse-net`; completely isolated from `n8n-postgres` |
+| **5672**| TCP | RabbitMQ AMQP | **No** | **None** (Docker network only) | Internal Celery broker traffic across `globepulse-net` |
+| **6379**| TCP | Redis | **No** | **None** (Docker network only) | Internal session/caching traffic across `globepulse-net` |
 | **8080**| TCP | news-service | **No** | `127.0.0.1:8080` | Proxied through Nginx `/api/v1/news` |
 | **8081**| TCP | auth-service | **No** | `127.0.0.1:8081` | Proxied through Nginx `/api/v1/auth` |
 | **8082**| TCP | country-service | **No**| `127.0.0.1:8082` | Proxied through Nginx `/api/v1/countries` |
@@ -1346,7 +1363,7 @@ docker compose up -d
 | **15672**| TCP| RabbitMQ Web UI | **No** | `127.0.0.1:15672`| Accessible via SSH tunnel only |
 
 > **IMPORTANT DOCKER NETWORKING NOTE:**  
-> By default, Docker manipulates `iptables` rules directly, creating NAT table entries that bypass UFW rules. Specifying host bindings explicitly as `127.0.0.1:<PORT>:<PORT>` in `docker-compose.override.yml` guarantees that internal services bind strictly to the loopback interface and cannot be reached via external network interfaces.
+> By default, Docker manipulates `iptables` rules directly, creating NAT table entries that can bypass UFW rules when ports are mapped to `0.0.0.0`. By omitting host port publications for `postgres`, `redis`, and RabbitMQ AMQP (keeping them entirely within `globepulse-net`), and binding Nginx-proxied microservices explicitly to `127.0.0.1:<PORT>:<PORT>`, the attack surface is completely minimized and host-port collisions with existing workloads are entirely avoided.
 
 ---
 
@@ -1435,11 +1452,15 @@ Execute this checklist sequentially after deploying on the VPS:
 
 - [ ] **VPS Hardening:** Non-root `deploy` user configured; password authentication disabled in SSH; root login restricted.
 - [ ] **Firewall Active:** `sudo ufw status` confirms only ports `22`, `80`, and `443` are allowed publicly.
-- [ ] **Host Ports Protected:** `netstat -tuln` confirms ports `5432`, `6379`, `5672`, `15672`, and microservice ports `8080-8084` are bound strictly to `127.0.0.1`.
-- [ ] **Containers Running:** `docker compose ps` shows all 10 containers in an `Up` status.
+- [ ] **Host Ports Protected & Isolated:** `ss -lntp` or `netstat -tuln` confirms:
+  - Ports `5432` (PostgreSQL), `6379` (Redis), and `5672` (RabbitMQ AMQP) are **not** published to any host interface.
+  - Frontend (`3100`), RabbitMQ Management (`15672`), and microservice ports (`8080-8084`) are bound strictly to `127.0.0.1`.
+  - Port `3000` remains claimed exclusively by the existing `go-whatsapp-web-multidevice-whatsapp_go-1` container without collision.
+- [ ] **Existing Workloads Untouched:** `docker ps` verifies that existing containers (`n8n`, `n8n-postgres`, and `go-whatsapp-web-multidevice-whatsapp_go-1`) are intact, healthy, and undisturbed.
+- [ ] **GlobePulse Containers Running:** `docker compose ps` shows all 10 containers in an `Up` status.
 - [ ] **Database Migrations Complete:** `docker compose exec postgres psql -U gp_admin -d globepulse -c "\dt"` outputs 8 tables.
 - [ ] **Ingestion Active:** Querying `SELECT count(*) FROM threat_events;` shows row count increasing across scheduler cycles.
-- [ ] **Frontend Operational:** Navigating to `https://app.example.com` loads the 3D globe interface over valid HTTPS.
+- [ ] **Frontend Operational:** Navigating to `https://app.example.com` loads the 3D globe interface over valid HTTPS via reverse proxy to `127.0.0.1:3100`.
 - [ ] **API Gateway Functional:** `curl -sI https://api.example.com/health/ingestion` returns `HTTP/2 200`.
 - [ ] **SSL Auto-Renewal Confirmed:** `sudo certbot renew --dry-run` reports success.
 - [ ] **Automated Backups Scheduled:** `crontab -l` displays active daily backup job for `/opt/globepulse/scripts/backup_postgres.sh`.
@@ -1452,9 +1473,10 @@ Execute this checklist sequentially after deploying on the VPS:
 | Operational Task | Shell Command |
 | :--- | :--- |
 | **Start Entire Stack** | `cd /opt/globepulse/app && docker compose up -d` |
-| **Stop Entire Stack** | `cd /opt/globepulse/app && docker compose down` |
+| **Stop Entire Stack (GlobePulse ONLY)** | `cd /opt/globepulse/app && docker compose down` *(Never run globally!)* |
 | **Restart Single Service** | `docker compose restart <service-name>` |
 | **Inspect Container Status** | `docker compose ps` |
+| **Verify Existing Host Containers** | `docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"` |
 | **Live Stream All Logs** | `docker compose logs -f --tail=100` |
 | **Live Stream Specific Service**| `docker compose logs -f --tail=100 news-service` |
 | **Trigger Manual DB Backup**| `/opt/globepulse/scripts/backup_postgres.sh` |
@@ -1464,7 +1486,7 @@ Execute this checklist sequentially after deploying on the VPS:
 | **Nginx Syntax Check** | `sudo nginx -t` |
 | **Nginx Reload** | `sudo systemctl reload nginx` |
 | **Certbot Dry Run** | `sudo certbot renew --dry-run` |
-| **Clean Unused Docker Images**| `docker image prune -af` |
+| **Clean Unused Docker Images (Scoped)**| `docker image prune -f` *(Do NOT prune volumes or run prune -a globally)* |
 | **Inspect Disk Space** | `df -h /` |
 
 ---
@@ -1475,9 +1497,11 @@ Before releasing the platform to production traffic, verify each security contro
 
 - [ ] **No Default Credentials:** Default passwords (`devpassword`, `devuser`, `supersecret`, `guest`) are purged and replaced with cryptographically random strings.
 - [ ] **No Plaintext Secrets in Version Control:** The `.env` file is listed in `.gitignore` and has permissions `600` on the VPS.
-- [ ] **Database Isolation:** PostgreSQL is not listening on `0.0.0.0:5432`. It is accessible only from `127.0.0.1` and the internal Docker network.
-- [ ] **Redis Isolation:** Redis does not listen on public interfaces; no public port mapping exists.
-- [ ] **RabbitMQ Management Dashboard Secured:** Port `15672` is not open in UFW; access is restricted to SSH tunneling.
+- [ ] **Database Isolation:** PostgreSQL does not publish any host port; it communicates exclusively across the internal `globepulse-net` Docker network with zero exposure to the host or existing `n8n-postgres`.
+- [ ] **Redis Isolation:** Redis does not publish any host port; it communicates exclusively across the internal `globepulse-net` network.
+- [ ] **RabbitMQ Management Dashboard Secured:** Port `15672` is bound strictly to `127.0.0.1:15672` and blocked by UFW; access is restricted to SSH tunneling.
+- [ ] **Frontend Port Decoupled:** Frontend is bound to `127.0.0.1:3100`, eliminating any collision with the existing `whatsapp_go` container on port 3000.
+- [ ] **Microservices Loopback Bound:** All 5 API services (`8080-8084`) are bound strictly to `127.0.0.1`, reachable exclusively by the host Nginx reverse proxy.
 - [ ] **CORS Restricted:** Nginx CORS configuration explicitly reflects `https://app.example.com` and disallows wildcard origins.
 - [ ] **HTTP Security Headers Present:** Responses include `X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection`, and `Strict-Transport-Security`.
 - [ ] **Unattended Upgrades Active:** Ubuntu OS is configured to automatically download and apply critical security patches.
@@ -1503,10 +1527,19 @@ The deployment blocker audit resolved the genuine blockers identified in the rep
 3. **`auth-service` Health Endpoint (RESOLVED):**
    * **Resolution:** Implemented a public, unauthenticated, lightweight `GET /health` endpoint in `services/auth-service/internal/handler/http/router.go` returning `{"status": "ok"}` with HTTP 200. This unifies health verification across all backend services (`auth-service:8081`, `news-service:8080`, `country-service:8082`, `ai-service:8083`, and `analytics-service:8084`).
 
+4. **Multi-Tenant VPS Coexistence & Port Isolation (RESOLVED):**
+   * **Resolution:** Reconfigured `docker-compose.yml` and `docker-compose.override.yml`:
+     * Removed host port publication for `postgres` (5432) and `redis` (6379) — both now reside purely on the internal Docker network.
+     * Removed AMQP host publication (5672); bound RabbitMQ management (15672) to loopback `127.0.0.1:15672:15672` for local SSH tunnels.
+     * Remapped the GlobePulse frontend host port from `3000` to `127.0.0.1:3100:80` to prevent collision with the existing `go-whatsapp-web-multidevice-whatsapp_go-1` container bound to host port 3000.
+     * Bound all 5 backend microservices (`8080-8084`) strictly to `127.0.0.1`.
+     * Placed all containers on a dedicated, isolated custom bridge network `globepulse-net`, ensuring zero DNS or IP collisions with `n8n` or other workloads.
+
 ### 29.2 Remaining Manual Verification Required on Target VPS
 
 The following operational tasks require the live Ubuntu 24.04 LTS host environment and cannot be executed inside the container build sandbox:
 
+* **Verify Existing Workloads Intact:** Run `docker ps` to verify that `n8n`, `n8n-postgres`, and `go-whatsapp-web-multidevice-whatsapp_go-1` remain in the `Up` state after GlobePulse deployment.
 * **VPS DNS Propagation:** Verify that A/AAAA records for `app.example.com` and `api.example.com` resolve to the public IP address of the target VPS (`dig +short A app.example.com`).
 * **Let's Encrypt TLS Certificate Issuance:** Run `sudo certbot --nginx -d app.example.com -d api.example.com` against the live internet-facing Nginx instance.
 * **UFW Firewall State:** Verify that UFW allows only ports 22, 80, and 443 (`sudo ufw status verbose`).
